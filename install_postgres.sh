@@ -1,34 +1,43 @@
 #!/bin/bash
 
-# Скрипт установки PostgreSQL и создания пользователя и базы
+# Скрипт установки PostgreSQL и настройки peer-доступа через Linux-пользователя
 
 set -e
 
-DB_USER="user"
-DB_PASS="1234"
+LINUX_USER="user"
 DB_NAME="userdb"
 
 echo "=== Установка PostgreSQL ==="
 sudo apt update
 sudo apt install -y postgresql postgresql-contrib
 
-echo "=== Запуск и включение PostgreSQL ==="
-sudo systemctl enable postgresql
-sudo systemctl start postgresql
+echo "=== Создание системного пользователя $LINUX_USER ==="
+if id "$LINUX_USER" &>/dev/null; then
+    echo "Пользователь $LINUX_USER уже существует"
+else
+    sudo adduser --disabled-password --gecos "" $LINUX_USER
+    echo "Пользователь $LINUX_USER создан"
+fi
 
-echo "=== Создание пользователя и базы данных ==="
-# Выполняем SQL от имени postgres
+echo "=== Настройка PostgreSQL для peer-аутентификации ==="
+# Убедимся, что в pg_hba.conf включён peer-доступ для local
+PG_HBA="/etc/postgresql/$(ls /etc/postgresql)/main/pg_hba.conf"
+
+sudo sed -i "s/^local\s\+all\s\+all\s\+.*$/local   all             all                                     peer/" "$PG_HBA"
+
+echo "=== Перезапуск PostgreSQL ==="
+sudo systemctl restart postgresql
+
+echo "=== Создание PostgreSQL-пользователя и базы данных ==="
 sudo -u postgres psql <<EOF
-CREATE USER $DB_USER WITH PASSWORD '$DB_PASS';
-CREATE DATABASE $DB_NAME OWNER $DB_USER;
-GRANT ALL PRIVILEGES ON DATABASE $DB_NAME TO $DB_USER;
+CREATE USER $LINUX_USER;
+CREATE DATABASE $DB_NAME OWNER $LINUX_USER;
+GRANT ALL PRIVILEGES ON DATABASE $DB_NAME TO $LINUX_USER;
 EOF
 
-echo "=== Создание файла .pgpass ==="
-PGPASS_FILE="$HOME/.pgpass"
-echo "localhost:5432:*:$DB_USER:$DB_PASS" > "$PGPASS_FILE"
-chmod 600 "$PGPASS_FILE"
-echo "Файл $PGPASS_FILE создан и защищён."
+echo "✅ Готово!"
 
-echo "✅ Готово. Вы можете подключаться так:"
-echo "    psql -U $DB_USER -d $DB_NAME"
+echo
+echo "🔐 Теперь вы можете подключаться так:"
+echo "  sudo -i -u $LINUX_USER"
+echo "  psql -d $DB_NAME"
