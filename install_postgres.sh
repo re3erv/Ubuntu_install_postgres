@@ -4,8 +4,8 @@
 
 set -e
 
-LINUX_USER="user"
-DB_NAME="userdb"
+LINUX_USER="user1"
+DB_NAME="user1db"
 
 echo "=== Установка PostgreSQL ==="
 sudo apt update
